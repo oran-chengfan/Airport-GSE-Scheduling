@@ -107,7 +107,7 @@ def evaluate_model(model_name, model_path, test_df, config):
 
 
 if __name__ == "__main__":
-    prefix = "toy_data/D20-F20-S42"
+    prefix = "toy_data/D30-F30-S42"
     config_path = "./toy_data/config.json"
     test_csv_path = f"{prefix}-Test.csv"
     

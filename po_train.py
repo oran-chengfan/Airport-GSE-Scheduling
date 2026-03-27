@@ -21,8 +21,8 @@ def load_and_norm_data(csv_path, global_mean=None, global_std=None):
     true_ata_tensor = torch.tensor(df['ata_min'].values, dtype=torch.float32)
     return x_tensor, sta_tensor, true_ata_tensor, global_mean, global_std
 
-def train_po_baseline():
-    prefix = "toy_data/D20-F20-S42"
+def train_po_baseline(prefix):
+    
     x_train, sta_train, y_train, g_mean, g_std = load_and_norm_data(f"{prefix}-Train.csv")
     x_val, sta_val, y_val, _, _ = load_and_norm_data(f"{prefix}-Val.csv", g_mean, g_std)
 
@@ -71,4 +71,6 @@ def train_po_baseline():
     # 保存最佳模型
     torch.save({'state_dict': best_model_state, 'g_mean': g_mean, 'g_std': g_std}, f"{prefix}-PO_Best.pth")
 if __name__ == "__main__":
-    train_po_baseline()
+    train_po_baseline(prefix = "toy_data/D30-F30-S42")
+
+    

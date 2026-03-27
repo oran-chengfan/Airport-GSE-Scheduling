@@ -159,34 +159,33 @@ class DFL_Surrogate_Function(torch.autograd.Function):
         # 链式法则：运筹梯度 * 网络传来的上游梯度
         return ctx.grad_pred_ata * grad_output, None, None, None
 
-def train_dfl():
+def train_dfl(prefix):
     print("=== 开始 DFL 端到端联合训练 ===")
     import copy
     from gurobipy import GRB
     
     # 1. 加载配置与前缀路径
     config = json.load(open('./toy_data/config.json', 'r'))
-    prefix = "toy_data/D50-F15-S42"  # 统一使用 prefix 加载 Train 和 Val
+    
     
     df_train = pd.read_csv(f"{prefix}-Train.csv")
     df_val = pd.read_csv(f"{prefix}-Val.csv")
     days_train = df_train['day_id'].unique()
     days_val = df_val['day_id'].unique()
     
-    # 2. 特征全局归一化 (仅依赖训练集数据计算统计量)
+    # 特征归一化
     all_features = df_train[['feat_weather', 'buffer', 'interval_next']].values
     global_mean = np.mean(all_features, axis=0)
     global_std = np.std(all_features, axis=0) + 1e-6
     
-    # 3. 初始化网络与优化器
     model = LinearDelayPredictor(input_dim=3)
+    po_checkpoint = torch.load(f"{prefix}-PO_Best.pth",weights_only=False)
+    model.load_state_dict(po_checkpoint['state_dict'])
     optimizer = optim.Adam(model.parameters(), lr=0.01,weight_decay=1e-3)
     num_epochs = 100000
-    batch_size = 3
+    batch_size = 4
     patience = 20
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100, eta_min=1e-5)
-    
-    # 早停监控指标
     best_val_surr = float('inf')
     best_val_regret = float('inf')
     epochs_no_improve_surr = 0
@@ -344,4 +343,5 @@ def train_dfl():
     # plt.show()
 
 if __name__ == "__main__":
-    train_dfl()
+    train_dfl(prefix = "toy_data/D30-F30-S42")
+    
