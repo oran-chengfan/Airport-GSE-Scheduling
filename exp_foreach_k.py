@@ -29,19 +29,19 @@ def create_config_for_k(k, config_path="./toy_data/config.json"):
     return config
 
 def main():
-    days = 30
-    flights = 20
+    days = 100
+    flights = 30
     seed = 42
     prefix = f"toy_data/D{days}-F{flights}-S{seed}"
-    K_list = [8,9,10,12,15] # 给定数据集，探索K的变化
+    K_list = [13,14,15,18,20] # 给定数据集，探索K的变化
     
-    print(f"\n生成数据集{days}天 $\times$ {flights}航班，随机种子 {seed}")
+    print(f"\n生成数据集{days}天，每天 {flights}航班，随机种子 {seed}")
     val_days = max(1, int(days * 0.2))
     test_days = max(1, int(days * 0.3))
     
-    df_train = generate_dynamic_wind_tunnel(days, flights, seed, target_K=10)
-    df_val = generate_dynamic_wind_tunnel(val_days, flights, seed + 1, target_K=10)
-    df_test = generate_dynamic_wind_tunnel(test_days, flights, seed + 2, target_K=10)
+    df_train = generate_dynamic_wind_tunnel(days, flights, seed, target_K=15)
+    df_val = generate_dynamic_wind_tunnel(val_days, flights, seed + 1, target_K=15)
+    df_test = generate_dynamic_wind_tunnel(test_days, flights, seed + 2, target_K=15)
     
     df_train.to_csv(f"{prefix}-Train.csv", index=False)
     df_val.to_csv(f"{prefix}-Val.csv", index=False)
@@ -103,21 +103,36 @@ def main():
         print(f"{k:<15} | {po_r:<15.2f} | {dfl_r:<15.2f} | {winner}")
     print("="*60)
 
+# 6. 绘制顶会级别的相变交叉曲线
     plt.figure(figsize=(10, 6), dpi=150)
     plt.plot(results['K'], results['PO_Regret'], label='PO (MSE Driven)', marker='o', linewidth=2.5, linestyle='--', color='gray')
     plt.plot(results['K'], results['DFL_Regret'], label='DFL (Regret Driven)', marker='s', linewidth=3, color='#d62728')
     
-    plt.axvspan(7.5, 11.5, color='red', alpha=0.1, label='Phase Transition (Sweet Spot)')
+    # [核心修正] 动态计算相变阴影区域，禁止硬编码
+    k_array = np.array(results['K'])
+    po_regret_array = np.array(results['PO_Regret'])
+    dfl_regret_array = np.array(results['DFL_Regret'])
     
-    plt.title('Regret vs Capacity', fontsize=14, fontweight='bold')
-    plt.xlabel('Number of vehicles (K)', fontsize=12)
-    plt.ylabel('Regret', fontsize=12)
-    plt.xticks(results['K'])
+    # 找到 DFL 胜出的连续区间
+    dfl_wins = dfl_regret_array < po_regret_array
+    for i in range(len(k_array) - 1):
+        if dfl_wins[i] or dfl_wins[i+1]:
+            # 仅当相邻两点中存在 DFL 胜出时，进行区间高亮
+            plt.axvspan(k_array[i], k_array[i+1], color='red', alpha=0.1)
+            
+    # 添加一次图例标签
+    if np.any(dfl_wins):
+        plt.axvspan(-1, -1, color='red', alpha=0.1, label='Phase Transition (DFL Wins)')
+    
+    plt.xlim(min(k_array) - 1, max(k_array) + 1)
+    plt.title('System Regret vs. Fleet Capacity (K)', fontsize=14, fontweight='bold')
+    plt.xlabel('Fleet Capacity K (Number of Vehicles)', fontsize=12)
+    plt.ylabel('System Regret (Delay Cost)', fontsize=12)
+    plt.xticks(k_array)
     plt.legend(fontsize=11)
     plt.grid(True, linestyle=':', alpha=0.8)
     plt.tight_layout()
-    # plt.savefig('Phase_Transition_Curve.png')
-    plt.show()
+    plt.savefig(f'Phase_Transition_Curve_{days}Days_{flights}Flights_{seed}.png')
 
 if __name__ == "__main__":
     main()
