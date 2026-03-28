@@ -5,9 +5,10 @@ import argparse
 
 def generate_dynamic_wind_tunnel(num_days, num_flights, seed,target_K,num_peaks=2):
     records = []
+
     np.random.seed(seed)
-    
-    critical_interval = 60/target_K
+    rho_optimal = 0.85
+    critical_interval = 60/(target_K * rho_optimal)
     for day in range(num_days):
         peak_centers = np.random.uniform(0.25, 0.75, num_peaks) * num_flights
         intervals = []
