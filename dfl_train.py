@@ -308,4 +308,4 @@ def train_dfl(prefix):
 
 
 if __name__ == "__main__":
-    train_dfl(prefix = "toy_data/Cascade_D50-F20-K10")
+    train_dfl(prefix = "toy_data/D50-F20-K10")

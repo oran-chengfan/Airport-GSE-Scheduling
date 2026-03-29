@@ -85,7 +85,7 @@ if __name__ == "__main__":
     df_train = generate_cascade_scenario(num_days=num_train, num_flights=20, seed=seed, target_K=K)
     df_val = generate_cascade_scenario(num_days=num_val, num_flights=20, seed=seed, target_K=K)
     df_test = generate_cascade_scenario(num_days=num_test, num_flights=20, seed=seed, target_K=K)
-    prefix = f"toy_data/Cascade_D{num_train}_F{num_flights}_K{K}"
+    prefix = f"toy_data/D{num_train}_F{num_flights}_K{K}"
     os.makedirs("toy_data", exist_ok=True)
     
     df_train.to_csv(f"{prefix}-Train.csv", index=False)

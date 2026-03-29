@@ -11,13 +11,19 @@ from utils import rebuild_instance_from_group
 
 def evaluate_model(model_name, model_path, test_df, config):
     """
-    加载指定模型并在测试集上计算 MSE, Regret, 和 Surrogate Cost。
+    加载 3 维预训练模型，在给定 config (包含特定运力 K) 下测算三项核心指标。
     """
-    # 1. 加载模型权重与全局归一化参数
-    checkpoint = torch.load(model_path,weights_only=False)
+    import torch
+    import torch.nn as nn
+    from gurobipy import GRB
+    from nn import LinearDelayPredictor
+    from solver import GSESolver
+    from utils import rebuild_instance_from_group
+    import numpy as np
+
+    checkpoint = torch.load(model_path, weights_only=False)
     g_mean = checkpoint['g_mean']
     g_std = checkpoint['g_std']
-    
     model = LinearDelayPredictor(input_dim=3)
     model.load_state_dict(checkpoint['state_dict'])
     model.eval()
@@ -25,20 +31,16 @@ def evaluate_model(model_name, model_path, test_df, config):
     mse_loss_fn = nn.MSELoss()
     days_test = test_df['day_id'].unique()
     
-    total_mse = 0.0
-    total_surr = 0.0
-    total_regret = 0.0
-    
+    total_mse, total_surr, total_regret = 0.0, 0.0, 0.0
     solver = GSESolver(config)
     
-    print(f"正在评估 {model_name} 模型...")
     with torch.no_grad():
         for day in days_test:
             day_df = test_df[test_df['day_id'] == day].sort_values('flight_id')
             instance = rebuild_instance_from_group(day, day_df)
             flights = sorted(instance['flights'])
             
-            # 特征提取与前向预测
+            # 直接使用基础物理特征进行前向传播
             raw_features = day_df[['feat_weather', 'buffer', 'interval_next']].values
             norm_features = (raw_features - g_mean) / g_std
             
@@ -47,39 +49,30 @@ def evaluate_model(model_name, model_path, test_df, config):
             true_ata_tensor = torch.tensor(day_df['ata_min'].values, dtype=torch.float32)
             
             pred_ata_tensor, _ = model(x_tensor, sta_tensor)
-            
-            # 1. 计算纯数学指标: MSE
             day_mse = mse_loss_fn(pred_ata_tensor, true_ata_tensor).item()
             total_mse += day_mse
             
-            # 构造预测与真实字典
             pred_ata = {fn: pred_ata_tensor[j].item() for j, fn in enumerate(flights)}
             true_ata = {fn: true_ata_tensor[j].item() for j, fn in enumerate(flights)}
             
-            # ==========================================
-            # 运筹学物理评测：进入 Gurobi 沙盒
-            # ==========================================
-            
-            # Step A: 按照模型的预测时间，制定全局排班拓扑
+            # Gurobi 物理连边评估
             model_mip, vars_mip, *_ = solver.build_model(instance, pred_ata, relax=False)
             model_mip.setParam("OutputFlag", 0)
             model_mip.setParam("Threads", 1)
             model_mip.optimize()
             
             if model_mip.SolCount == 0:
-                # 极端熔断：如果预测导致无解（严重违背时间窗），赋予极高罚分
                 day_surr, day_regret = 100000.0, 100000.0
             else:
                 x_mip = vars_mip['x']
                 active_edges = [(u, v) for (u, v) in x_mip if x_mip[u, v].X > 0.5]
                 
-                # Step B: 计算名义时间表 X1_vals
+                # 计算 Surrogate
                 model_1, vars_1 = solver.build_reduced_model(instance, pred_ata, active_edges)
                 model_1.setParam("OutputFlag", 0)
                 model_1.optimize()
                 X1_vals = {k: var.X for k, var in vars_1['t'].items()}
                 
-                # Step C: 计算 Surrogate Cost (死板拓扑 + 锁死时间表)
                 model_2, vars_2 = solver.build_reduced_model(instance, true_ata, active_edges)
                 model_2.setParam("OutputFlag", 0)
                 for k, var in vars_2['t'].items():
@@ -89,7 +82,7 @@ def evaluate_model(model_name, model_path, test_df, config):
                 model_2.optimize()
                 day_surr = model_2.ObjVal
                 
-                # Step D: 计算 Regret Cost (死板拓扑 + 允许连续时间变量顺延重优化)
+                # 计算 Regret
                 model_3, _ = solver.build_reduced_model(instance, true_ata, active_edges)
                 model_3.setParam("OutputFlag", 0)
                 model_3.optimize()
@@ -99,15 +92,10 @@ def evaluate_model(model_name, model_path, test_df, config):
             total_regret += day_regret
 
     num_days = len(days_test)
-    avg_mse = total_mse / num_days
-    avg_surr = total_surr / num_days
-    avg_regret = total_regret / num_days
-    
-    return avg_mse, avg_regret, avg_surr
-
+    return total_mse / num_days, total_regret / num_days, total_surr / num_days
 
 if __name__ == "__main__":
-    prefix = "toy_data/D30-F30-S42"
+    prefix = "toy_data/D50-F20-S42"
     config_path = "./toy_data/config.json"
     test_csv_path = f"{prefix}-Test.csv"
     
