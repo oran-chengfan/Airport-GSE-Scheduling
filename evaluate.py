@@ -95,7 +95,7 @@ def evaluate_model(model_name, model_path, test_df, config):
     return total_mse / num_days, total_regret / num_days, total_surr / num_days
 
 if __name__ == "__main__":
-    prefix = "toy_data/D50-F20-S42"
+    prefix = "toy_data/D50-F20-K10"
     config_path = "./toy_data/config.json"
     test_csv_path = f"{prefix}-Test.csv"
     

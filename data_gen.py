@@ -4,7 +4,6 @@ import os
 
 def generate_cascade_scenario(num_days=50, num_flights=20, seed=42, target_K=10):
     """
-    生成针对级联延误阻断机制的紧平衡测试风洞。
     物理参数设定: 真实服务周期 W = 70. 期望利用率 rho = 0.85.
     """
     records = []

@@ -107,5 +107,5 @@ def train_po_baseline(prefix):
     print(f"PO训练完成：最佳 Val MSE: {best_val_mse:.2f}")
 
 if __name__ == "__main__":
-    train_po_baseline(prefix = "toy_data/D50-F20-S42")
+    train_po_baseline(prefix = "toy_data/D50-F20-K10")
 
