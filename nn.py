@@ -14,3 +14,16 @@ class LinearDelayPredictor(nn.Module):
         pred_ata = sta + pred_delay
         return pred_ata, pred_delay
 
+class PredictiveMLP(nn.Module):
+    def __init__(self, input_dim=12, hidden_dim=32):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, 1)
+        )
+
+    def forward(self, x):
+        # 确保输出的维度与原有 Linear 模型一致
+        return self.net(x)
+

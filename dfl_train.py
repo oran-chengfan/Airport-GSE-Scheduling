@@ -344,4 +344,3 @@ def train_dfl(prefix):
 
 if __name__ == "__main__":
     train_dfl(prefix = "toy_data/D30-F30-S42")
-    

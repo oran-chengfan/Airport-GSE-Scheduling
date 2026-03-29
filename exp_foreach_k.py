@@ -30,11 +30,10 @@ def create_config_for_k(k, config_path="./toy_data/config.json"):
 
 def main():
     days = 100
-    flights = 30
+    flights = 60
     seed = 42
     prefix = f"toy_data/D{days}-F{flights}-S{seed}"
-    K_list = [13,14,15,18,20] # 给定数据集，探索K的变化
-    
+    test_k_list = [26, 28, 30, 32, 34, 36, 38, 40]    
     print(f"\n生成数据集{days}天，每天 {flights}航班，随机种子 {seed}")
     val_days = max(1, int(days * 0.2))
     test_days = max(1, int(days * 0.3))
