@@ -43,17 +43,17 @@ def generate_cascade_scenario(num_days=50, num_flights=20, seed=42, target_K=10)
                 
             std = sta + 60 + buffer_plan
             
-            # 随机延误生成机制 (发生概率与强度均受天气影响)
-            delay_prob = 0.2 + 0.6 * feat_weather
+            # 随机延误生成机制 (所有航班面对同等天气的延误期望绝对公平)
+            delay_prob = 0.2 + 0.5 * feat_weather
             if np.random.rand() < delay_prob:
-                # 发生延误
-                delay_mean = feat_weather * 40.0 + (15.0 if is_critical else 0.0)
+                # 发生延误：剔除 if is_critical 的偏差，纯粹由天气决定
+                delay_mean = feat_weather * 50.0 
                 delay_std = 5.0 + 10.0 * feat_weather
                 delay_min = int(np.random.normal(delay_mean, delay_std))
-                delay_min = max(5, delay_min) # 至少延误 5 分钟
+                delay_min = max(5, delay_min) 
             else:
-                # 准点或早到 (负延误)
-                delay_min = int(np.random.normal(-10, 10))
+                # 准点或早到
+                delay_min = int(np.random.normal(-5, 5))
                 delay_min = min(0, delay_min)
                 
             records.append({
@@ -82,8 +82,8 @@ if __name__ == "__main__":
     seed = 42
     K = 10
     df_train = generate_cascade_scenario(num_days=num_train, num_flights=20, seed=seed, target_K=K)
-    df_val = generate_cascade_scenario(num_days=num_val, num_flights=20, seed=seed, target_K=K)
-    df_test = generate_cascade_scenario(num_days=num_test, num_flights=20, seed=seed, target_K=K)
+    df_val = generate_cascade_scenario(num_days=num_val, num_flights=20, seed=seed+1, target_K=K)
+    df_test = generate_cascade_scenario(num_days=num_test, num_flights=20, seed=seed+2, target_K=K)
     prefix = f"toy_data/D{num_train}-F{num_flights}-K{K}"
     os.makedirs("toy_data", exist_ok=True)
     

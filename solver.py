@@ -107,13 +107,13 @@ class GSESolver:
             model.addConstr(y[fn] >= s[dep_n] + durations[dep_n] - ddl, name=f"def_delay_{fn}")
 
         pi_wt = self.pi
-        alpha_wt = self.pi * 0.1
+        alpha_wt = self.pi * 0.01
         beta_wt = self.pi * 0.05
         
-        # obj = gp.quicksum(pi_wt * y[fn] + beta_wt * plane_wait[fn] for fn in flights)
-        # obj += gp.quicksum(alpha_wt * veh_wait[n] for n in tasks)
+        obj = gp.quicksum(pi_wt * y[fn] + beta_wt * plane_wait[fn] for fn in flights)
+        obj += gp.quicksum(alpha_wt * veh_wait[n] for n in tasks)
         # obj += gp.quicksum(0.001 * t[n] for n in tasks) 
-        obj = gp.quicksum(pi_wt * y[fn] for fn in flights)
+        # obj = gp.quicksum(pi_wt * y[fn] for fn in flights)
         model.setObjective(obj, GRB.MINIMIZE)
 
         vars_dict = {'x': x, 't': t, 's': s, 'veh_wait': veh_wait, 'plane_wait': plane_wait, 'y': y}

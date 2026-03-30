@@ -7,12 +7,9 @@ from gurobipy import GRB
 
 from nn import LinearDelayPredictor
 from solver import GSESolver
-from utils import rebuild_instance_from_group
+from utils import rebuild_instance_from_group,augment_features
 
-def evaluate_model(model_name, model_path, test_df, config):
-    """
-    加载 3 维预训练模型，在给定 config (包含特定运力 K) 下测算三项核心指标。
-    """
+def evaluate_model(model_name, model_path, test_df, config, test_k):
     import torch
     import torch.nn as nn
     from gurobipy import GRB
@@ -24,7 +21,9 @@ def evaluate_model(model_name, model_path, test_df, config):
     checkpoint = torch.load(model_path, weights_only=False)
     g_mean = checkpoint['g_mean']
     g_std = checkpoint['g_std']
-    model = LinearDelayPredictor(input_dim=3)
+    
+    # [修复点 1]：初始化新版无参的残差网络
+    model = LinearDelayPredictor()
     model.load_state_dict(checkpoint['state_dict'])
     model.eval()
     
@@ -40,22 +39,26 @@ def evaluate_model(model_name, model_path, test_df, config):
             instance = rebuild_instance_from_group(day, day_df)
             flights = sorted(instance['flights'])
             
-            # 直接使用基础物理特征进行前向传播
             raw_features = day_df[['feat_weather', 'buffer', 'interval_next']].values
             norm_features = (raw_features - g_mean) / g_std
+            x_base = torch.tensor(norm_features, dtype=torch.float32)
             
-            x_tensor = torch.tensor(norm_features, dtype=torch.float32)
+            # 计算当前测试环境的拥挤度
+            c_val = 10.0 / test_k
+            x_cong = torch.full((len(day_df), 1), c_val, dtype=torch.float32)
+            
             sta_tensor = torch.tensor(day_df['sta_min'].values, dtype=torch.float32)
             true_ata_tensor = torch.tensor(day_df['ata_min'].values, dtype=torch.float32)
             
-            pred_ata_tensor, _ = model(x_tensor, sta_tensor)
+            # 前向传播需要同时传入 base 和 cong
+            pred_ata_tensor, _ = model(x_base, x_cong, sta_tensor)
+            
             day_mse = mse_loss_fn(pred_ata_tensor, true_ata_tensor).item()
             total_mse += day_mse
             
             pred_ata = {fn: pred_ata_tensor[j].item() for j, fn in enumerate(flights)}
             true_ata = {fn: true_ata_tensor[j].item() for j, fn in enumerate(flights)}
             
-            # Gurobi 物理连边评估
             model_mip, vars_mip, *_ = solver.build_model(instance, pred_ata, relax=False)
             model_mip.setParam("OutputFlag", 0)
             model_mip.setParam("Threads", 1)
@@ -67,7 +70,6 @@ def evaluate_model(model_name, model_path, test_df, config):
                 x_mip = vars_mip['x']
                 active_edges = [(u, v) for (u, v) in x_mip if x_mip[u, v].X > 0.5]
                 
-                # 计算 Surrogate
                 model_1, vars_1 = solver.build_reduced_model(instance, pred_ata, active_edges)
                 model_1.setParam("OutputFlag", 0)
                 model_1.optimize()
@@ -82,7 +84,6 @@ def evaluate_model(model_name, model_path, test_df, config):
                 model_2.optimize()
                 day_surr = model_2.ObjVal
                 
-                # 计算 Regret
                 model_3, _ = solver.build_reduced_model(instance, true_ata, active_edges)
                 model_3.setParam("OutputFlag", 0)
                 model_3.optimize()
