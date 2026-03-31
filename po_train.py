@@ -3,34 +3,16 @@ import torch.nn as nn
 import torch.optim as optim
 import pandas as pd
 import numpy as np
-import copy
 from nn import LinearDelayPredictor
-from utils import rebuild_instance_from_group,augment_features
-
-def load_and_norm_data(csv_path, global_mean=None, global_std=None):
-    df = pd.read_csv(csv_path)
-    features = df[['feat_weather', 'buffer', 'interval_next']].values
-    
-    if global_mean is None:
-        global_mean = np.mean(features, axis=0)
-        global_std = np.std(features, axis=0) + 1e-6
-        
-    norm_features = (features - global_mean) / global_std
-    
-    x_tensor = torch.tensor(norm_features, dtype=torch.float32)
-    sta_tensor = torch.tensor(df['sta_min'].values, dtype=torch.float32)
-    true_ata_tensor = torch.tensor(df['ata_min'].values, dtype=torch.float32)
-    return x_tensor, sta_tensor, true_ata_tensor, global_mean, global_std
-
+from utils import augment_features
 
 def train_po_baseline(prefix, num_flights=20):
-    print("=== 开始 PO 基准训练===")
-
+    print("=== 开始 PO 基准训练 (3维纯物理学习 -> 11维免疫组装) ===")
 
     df_train = pd.read_csv(f"{prefix}-Train.csv")
     df_val = pd.read_csv(f"{prefix}-Val.csv")
     
-    # 构建全局 11 维归一化，使用有效区间 K=8~15
+    # 1. 构建全局 11 维归一化统计量，使用有效截断区间 K=8~15
     all_aug_features = []
     for k in range(8, 16):
         raw = df_train[['feat_weather', 'buffer', 'interval_next']].values
@@ -39,7 +21,7 @@ def train_po_baseline(prefix, num_flights=20):
     g_mean_11d = np.mean(all_aug_features, axis=0)
     g_std_11d = np.std(all_aug_features, axis=0) + 1e-6
 
-    # 只用 3 维特征进行绝对无偏的拟合
+    # 2. 严格使用 3 维特征进行绝对无偏的拟合
     model_3d = LinearDelayPredictor(input_dim=3)
     optimizer = optim.Adam(model_3d.parameters(), lr=0.01)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=15)
@@ -50,13 +32,14 @@ def train_po_baseline(prefix, num_flights=20):
     best_bias_3d = None
     epochs_no_improve = 0
 
-    for epoch in range(500):
+    for epoch in range(100000):
         model_3d.train()
         for day in df_train['day_id'].unique():
             optimizer.zero_grad()
             day_df = df_train[df_train['day_id'] == day].sort_values('flight_id')
             raw = day_df[['feat_weather', 'buffer', 'interval_next']].values
             
+            # 仅截取前 3 维的归一化参数
             norm_3d = (raw - g_mean_11d[:3]) / g_std_11d[:3]
             x_tensor = torch.tensor(norm_3d, dtype=torch.float32)
             sta_tensor = torch.tensor(day_df['sta_min'].values, dtype=torch.float32)
@@ -73,6 +56,7 @@ def train_po_baseline(prefix, num_flights=20):
             for day in df_val['day_id'].unique():
                 day_df = df_val[df_val['day_id'] == day].sort_values('flight_id')
                 raw = day_df[['feat_weather', 'buffer', 'interval_next']].values
+                
                 norm_3d = (raw - g_mean_11d[:3]) / g_std_11d[:3]
                 x_tensor = torch.tensor(norm_3d, dtype=torch.float32)
                 sta_tensor = torch.tensor(day_df['sta_min'].values, dtype=torch.float32)
@@ -92,19 +76,21 @@ def train_po_baseline(prefix, num_flights=20):
         else:
             epochs_no_improve += 1
 
+        if (epoch + 1) % 20 == 0:
+            print(f"PO Epoch [{epoch+1:03d}] | LR: {optimizer.param_groups[0]['lr']:.5f} | Val MSE: {val_mse:.2f}")
+
         if epochs_no_improve >= 30:
+            print("--> PO 早停触发。")
             break
 
+    # 3. 外科手术：拼装为 11 维，后 8 维权重强行设为 0
     state_dict_11d = {
-        'linear.weight': torch.cat([best_weights_3d, torch.zeros(1, 8)], dim=1),
+        'linear.weight': torch.cat([best_weights_3d, torch.zeros(1, 8)], dim=1), # type: ignore
         'linear.bias': best_bias_3d
     }
 
     torch.save({'state_dict': state_dict_11d, 'g_mean': g_mean_11d, 'g_std': g_std_11d}, f"{prefix}-PO_Best.pth")
-    print(f"PO 训练结束 (最低 MSE: {best_val_mse:.2f})。")
-
-
+    print(f"PO 模型就绪。最佳 Val MSE: {best_val_mse:.2f}")
 
 if __name__ == "__main__":
-    train_po_baseline(prefix = "toy_data/D50-F20-K10")
-
+    train_po_baseline(prefix="toy_data/D50-F20-K10", num_flights=20)

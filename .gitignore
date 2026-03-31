@@ -2,3 +2,4 @@ toy_data
 __pycache__
 cascade_toy_data
 .DS_Store
+./
